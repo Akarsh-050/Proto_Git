@@ -170,6 +170,68 @@ void extractPackfile(const std::string& postResponse, const std::string& outputP
     packFile.close();
 }
 
+// Step 1: Parse the Variable Length Integer -> the header
+size_t readObjectHeader(std::ifstream& file, int& type) {
+    uint8_t byte;
+    file.read(reinterpret_cast<char*>(&byte), 1);
+    // Type is in bits 4, 5, 6 of the first byte
+    type = (byte >> 4) & 0x07;
+    // Size starts with the last 4 bits of the first byte
+    size_t size = byte & 0x0F;
+    int shift = 4;
+    // If MSB (bit 7) is 1, keep reading
+    while (byte & 0x80) {
+        file.read(reinterpret_cast<char*>(&byte), 1);
+        size |= (static_cast<size_t>(byte & 0x7F) << shift);
+        shift += 7;
+    }
+    return size;
+}
+
+// Step 2: The Decompression Black Box (simplified)
+std::vector<char> decompressObject(std::ifstream& file, size_t expectedSize) {
+    // In a pragmatic setup, we feed the file stream directly to zlib
+    // Zlib will stop exactly when the object ends.
+    // (Implementation details for zlib 'inflate' would go here)
+    return {}; // Returns raw object data (commit, tree, or blob)
+}
+
+
+void checkoutTree(const std::string& treeHash, const fs::path& currentPath) {
+    // 1. Read the tree object from .git/objects (your existing logic)
+    auto entries = readTreeObject(treeHash); 
+
+    for (const auto& entry : entries) {
+        std::filesystem::path fullPath = currentPath / entry.name;
+
+        if (entry.mode == "40000") { // It's a Directory (Tree)
+            std::filesystem::create_directory(fullPath);
+            checkoutTree(entry.sha, fullPath); // Recursive call
+        } 
+        else { // It's a File (Blob)
+            std::string content = readBlobObject(entry.sha);
+            std::ofstream outFile(fullPath, std::ios::binary);
+            outFile << content;
+        }
+    }
+}
+
+std::string getTreeShaFromCommit(const std::string& commitSha) {
+
+    std::string content = readObjectContent(commitSha);
+
+    // 2. Parse the content line by line
+    std::istringstream stream(content);
+    std::string line;
+    while (std::getline(stream, line)) {
+        // The first line usually starts with "tree "
+        if (line.substr(0, 5) == "tree ") {
+            return line.substr(5, 40);
+        }
+    }
+    
+    throw std::runtime_error("Could not find tree SHA in commit object");
+}
 
 int main() {
 
@@ -187,10 +249,29 @@ int main() {
     // Post req for git-upload-pack
     std::string packfileResponse = negotiatePackfile(URL_RECEIVED, headHash);
 
-    //  binary file parsing
+
+    // 1. Discovery & Negotiation (Your code is good here)
     extractPackfile(packfileResponse, "data.pack");
 
-    
+    // 2. Open the file and SKIP the 12-byte header
+    std::ifstream packFile("data.pack", std::ios::binary);
+    packFile.seekg(12, std::ios::beg);
+
+    // 3. Loop through all objects (you get the count from the header verification)
+    for(int i = 0; i < objectCount; ++i) {
+        int type;
+        size_t size = readObjectHeader(packFile, type);
+        std::vector<char> rawData = decompressObject(packFile, size);
+        
+        // IMPORTANT: Save rawData to .git/objects/ so checkoutTree can find it!
+        saveObjectToDisk(rawData, type); 
+    }
+
+    // 4. Get the Tree SHA from the Commit SHA
+    std::string rootTreeSha = getTreeShaFromCommit(headHash);
+
+    // 5. Finally, reconstruct the files
+    checkoutTree(rootTreeSha, std::filesystem::current_path());
 
 return 0;
 }
