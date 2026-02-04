@@ -28,6 +28,8 @@ Proto_Git implements the "Plumbing" layer of Git, transforming a physical direct
 | `ls-tree` | A binary parser that navigates raw 20-byte hashes in tree buffers. |
 | `write-tree` | **Recursive Merkle Tree Construction**: Hashes the entire directory depth-first. |
 | `commit-tree` | Links a tree to project history with author metadata and parent-chain pointers. |
+| `clone` | **[Experimental]** Implements the Git Smart HTTP Protocol. Handles remote discovery, pkt-line negotiation, and side-band demultiplexing to reconstruct repositories from remote servers. |
+
 
 ---
 
