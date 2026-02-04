@@ -28,6 +28,8 @@ Proto_Git implements the "Plumbing" layer of Git, transforming a physical direct
 | `ls-tree` | A binary parser that navigates raw 20-byte hashes in tree buffers. |
 | `write-tree` | **Recursive Merkle Tree Construction**: Hashes the entire directory depth-first. |
 | `commit-tree` | Links a tree to project history with author metadata and parent-chain pointers. |
+| `clone` | **[Experimental]** Implements the Git Smart HTTP Protocol. Handles remote discovery, pkt-line negotiation, and side-band demultiplexing to reconstruct repositories from remote servers. |
+
 
 ---
 
@@ -42,13 +44,18 @@ Proto_Git implements the "Plumbing" layer of Git, transforming a physical direct
 
 ## ⚙️ Engineering Highlights
 
-### Binary Safety
-Unlike standard text-processing applications, **Proto_Git** is built to be **Binary Safe**. It handles data streams containing null bytes (`\0`) and non-printable characters, essential for managing Git's 20-byte raw SHA-1 identifiers and compressed Zlib streams.
+### Binary & Network Stream Safety
+Proto_Git is fully Binary Safe, handling null bytes (\0) and non-printable characters. This is critical for:
+Storage: Managing raw 20-byte SHA-1 hashes and Zlib-compressed streams.
+Networking: Decoding the side-band-64k protocol, where binary packfile data is interleaved with UTF-8 progress messages.
 
-
+### Git Smart Protocol (Trial)
+Implements Smart HTTP transport for remote synchronization:
+Pkt-Line Parser: Decodes Git’s packet format (4-byte hex prefix + payload).
+Stateful Negotiation: Manages the want/done handshake to define repository depth and scope.
 
 ### Recursive Determinism
-To ensure that the same directory structure always results in the exact same Tree Hash, Proto_Git implements **Lexicographical Sorting** of directory entries before hashing, maintaining 100% compatibility with official Git specifications.
+Ensures 1:1 compatibility with official Git specifications through Lexicographical Sorting of directory entries before hashing. This guarantees that Proto_Git and C-Git produce identical Merkle Tree hashes for the same directory state.
 
 ---
 
